@@ -21,7 +21,7 @@ import numpy as np
 #multiply by mass
 
 #constants
-mass = 100 #kg
+mass = 250 #kg
 
 #directory to access csv files from
 directory = '.'
@@ -53,12 +53,18 @@ df = df.dropna(subset=[time, a_f]).sort_values(time)
 
 # Finding velocity
 dt = df[time].diff().fillna(0.0)
-v0 = 0  # initial speed
+v0 = 0 # initial velocity
 df[v_f] = v0 + (df[a_f] * dt).cumsum()
+
+# Translate velocity to remove negatives
+df[v_f] = df[v_f] - df[v_f].min()
 
 # calculate drivetrain resistance F_r = m(-a)
 df['F_r (N)'] = mass * (-df[a_f]) 
 
+#data smoothing
+df['a_f smoothed'] = df[a_f].rolling(window=50).mean()
+df['F_r smoothed'] = df['F_r (N)'].rolling(window=50).mean()
 
 # plotting data
 def plot(x, y, xlabel, ylabel):
@@ -70,8 +76,7 @@ def plot(x, y, xlabel, ylabel):
     plt.tight_layout()
     plt.show()
 
-
-plot(df[time], df[a_f], 'Time (seconds)', 'Forward Acceleration (m/s^2)')
+plot(df[time], df['a_f smoothed'], 'Time (seconds)', 'Forward Acceleration (m/s^2)')
 plot(df[time], df[v_f], 'Time (seconds)', 'Velocity (m/s)')
-plot(df[time], df['F_r (N)'], 'Time (seconds)', 'Drivetrain Resistance (N)')
-plot(df[v_f], df['F_r (N)'], 'Velocity (m/s)', 'Drivetrain Resistance (N)')
+plot(df[time], df['F_r smoothed'], 'Time (seconds)', 'Drivetrain Resistance (N)')
+plot(df[v_f], df['F_r smoothed'], 'Velocity (m/s)', 'Drivetrain Resistance (N)')
