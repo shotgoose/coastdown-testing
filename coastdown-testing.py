@@ -26,7 +26,7 @@ mass = 100 #kg
 #directory to access csv files from
 directory = '.'
 
-#column titles
+# quick reference for column titles
 time = 'time (seconds)'
 a_f = 'accelerometer X (m/sec^2 highlighted)' #forward
 a_v = 'accelerometer Y (m/sec^2 highlighted)' #vertical
@@ -51,24 +51,27 @@ df[time] = pd.to_numeric(df[time], errors='coerce')
 df[a_f] = pd.to_numeric(df[a_f], errors='coerce')
 df = df.dropna(subset=[time, a_f]).sort_values(time)
 
-print(df.head())
-
 # Finding velocity
 dt = df[time].diff().fillna(0.0)
-v0 = 0.0  # initial speed
+v0 = 0  # initial speed
 df[v_f] = v0 + (df[a_f] * dt).cumsum()
 
-# If positive X is forward and coastdown acceleration is negative, |F_r| = m*|a|
-df['F_r (N)'] = -mass * (df[a_f])  # flip sign if your forward accel is negative during coastdown
+# calculate drivetrain resistance F_r = m(-a)
+df['F_r (N)'] = mass * (-df[a_f]) 
 
-print(df[[time, a_f, 'F_r (N)']].head())
 
-plt.figure()
-plt.plot(df[time], df[v_f])
-plt.xlabel('time')
-plt.ylabel('velocity')
-plt.title('velocity / time')
-plt.tight_layout()
-plt.show()
+# plotting data
+def plot(x, y, xlabel, ylabel):
+    plt.figure()
+    plt.plot(x, y)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(ylabel + ' vs. ' + xlabel)
+    plt.tight_layout()
+    plt.show()
 
-plt.figure()
+
+plot(df[time], df[a_f], 'Time (seconds)', 'Forward Acceleration (m/s^2)')
+plot(df[time], df[v_f], 'Time (seconds)', 'Velocity (m/s)')
+plot(df[time], df['F_r (N)'], 'Time (seconds)', 'Drivetrain Resistance (N)')
+plot(df[v_f], df['F_r (N)'], 'Velocity (m/s)', 'Drivetrain Resistance (N)')
