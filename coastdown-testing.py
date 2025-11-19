@@ -1,82 +1,98 @@
 import os
-import sys
-import math
-import networkx as nx
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import networkx as nx
+import matplotlib.pyplot as plt
+import math
 
-#formula: ma = F_d + F_r - T
-#a: deceleration
-#m: mass of car
-#T: traction force, pushing car forward (0 in coastdown)
-#F_d: aerodynamical drag, assume 0
-#F_r: drivetrain resistance, variable to be tested
+# constants
+MASS = 250 #kg
+WHEEL_DIAMETER = 58.42 #cm
 
-#revised formula: F_r = ma
+# filepaths
+SOURCE_FOLDER = "csv-data"
+DESTINATION_FOLDER = "coastdown-data"
+DIRECTORY = os.getcwd()
+INPUT_PATH = os.path.join(DIRECTORY, SOURCE_FOLDER)
+OUTPUT_PATH = os.path.join(DIRECTORY, DESTINATION_FOLDER)
 
-#order:
-#read csv file
-#determine deceleration based on speed
-#multiply by mass
+def process_file(filename):
+    # read file while skipping comments
+    df = pd.read_csv(filename, comment="#")
 
-#constants
-mass = 250 #kg
+    # keep desired data
+    desired_data = ["Time", "RR_Wheel,Speed"]
+    df = df[desired_data]
 
-#directory to access csv files from
-directory = '.'
+    # rename columns for convenience
+    column_names = {"Time" : "time", "RR_Wheel,Speed" : "wheel_rpm"}
+    df = df.rename(columns=column_names)
 
-# quick reference for column titles
-time = 'time (seconds)'
-a_f = 'accelerometer X (m/sec^2 highlighted)' #forward
-a_v = 'accelerometer Y (m/sec^2 highlighted)' #vertical
-a_l = 'accelerometer Z (m/sec^2 highlighted)' #lateral
-v_f = 'v_forward'
+    # determine car velocity (m/s)
+    df["velocity"] = df["wheel_rpm"] * ((math.pi * WHEEL_DIAMETER) / 60 / 100)
+    df["velocity"] = df["velocity"].rolling(window=100).mean()
+    
+    # numerically derive for acceleration (m/s^2)
+    dv = df["velocity"].diff()
+    dt = df["time"].diff()
+    df["acceleration"] = (dv / dt).rolling(window=50).mean()
 
-csv_files = [f for f in os.listdir(directory) if f.endswith('.csv') and os.path.isfile(os.path.join(directory, f))]
-calibration_files = [f for f in os.listdir(directory + '/calibration') if f.endswith('.csv') and os.path.isfile(os.path.join(directory + '/calibration', f))]
+    # drivetrain resistance (N) - only positive values are kept
+    df["F_r"] = (MASS * (-df["acceleration"])).clip(lower=0)
+    df["F_r"] = df["F_r"].rolling(window=600).mean()
 
-if not csv_files:
-    print("No CSV files found in directory")
-    sys.exit()
+    
+    return df
 
-if calibration_files:
-    print('calibration file(s) present')
+    # return pd.DataFrame({
 
-first_csv_file = os.path.join(directory, csv_files[0])
-df = pd.read_csv(first_csv_file)
+    # })
 
-# make columns numeric
-df[time] = pd.to_numeric(df[time], errors='coerce')
-df[a_f] = pd.to_numeric(df[a_f], errors='coerce')
-df = df.dropna(subset=[time, a_f]).sort_values(time)
+# function that iterates all files to process
+def iterate_files():
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-# Finding velocity
-dt = df[time].diff().fillna(0.0)
-v0 = 0 # initial velocity
-df[v_f] = v0 + (df[a_f] * dt).cumsum()
+    csv_files = [f for f in os.listdir(INPUT_PATH) if f.lower().endswith(".csv")]
+    print(csv_files)
+    index = 0
+    total = len(csv_files)
 
-# Translate velocity to remove negatives
-df[v_f] = df[v_f] - df[v_f].min()
+    for filename in csv_files:
+        # find file name
+        input = os.path.join(INPUT_PATH, filename)
 
-# calculate drivetrain resistance F_r = m(-a)
-df['F_r (N)'] = mass * (-df[a_f]) 
+        # process file
+        df = process_file(input)
 
-#data smoothing
-df['a_f smoothed'] = df[a_f].rolling(window=50).mean()
-df['F_r smoothed'] = df['F_r (N)'].rolling(window=50).mean()
+        # output
+        base, ext = os.path.splitext(filename)
+        out_name = f"{base}_converted{ext}"
+        output_path = os.path.join(OUTPUT_PATH, out_name)
+        df.to_csv(output_path, index=False)
 
-# plotting data
-def plot(x, y, xlabel, ylabel):
+        # message 
+        index += 1
+        print(str(index) + "/" + str(total) + ": " + filename + " converted to " + out_name)
+
+def graph_data(filename):
+    # read file while skipping comments
+    df = pd.read_csv(filename, comment="#")
+
     plt.figure()
-    plt.plot(x, y)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(ylabel + ' vs. ' + xlabel)
+    plt.plot(df["time"], df["F_r"])
+    plt.xlabel("time")
+    plt.ylabel("resistance (N)")
+    plt.title("time" + ' vs. ' + "drivetrain resistance")
     plt.tight_layout()
     plt.show()
 
-plot(df[time], df['a_f smoothed'], 'Time (seconds)', 'Forward Acceleration (m/s^2)')
-plot(df[time], df[v_f], 'Time (seconds)', 'Velocity (m/s)')
-plot(df[time], df['F_r smoothed'], 'Time (seconds)', 'Drivetrain Resistance (N)')
-plot(df[v_f], df['F_r smoothed'], 'Velocity (m/s)', 'Drivetrain Resistance (N)')
+    plt.figure()
+    plt.plot(df["time"], df["velocity"])
+    plt.xlabel("time")
+    plt.ylabel("velocity m/s")
+    plt.title("time" + ' vs. ' + "velocity")
+    plt.tight_layout()
+    plt.show()
+
+#iterate_files()
+graph_data(os.path.join(OUTPUT_PATH, "RR-Coastdown-2WD-1_converted.csv"))
