@@ -41,8 +41,12 @@ def process_file(filename):
     df["F_r"] = (MASS * (-df["acceleration"])).clip(lower=0)
     df["F_r"] = df["F_r"].rolling(window=600).mean()
 
-    
-    return df
+    # trim data to deceleration window
+    time_of_max_speed = df.loc[df["velocity"].idxmax(), "time"]
+    trimmed_df = df[(df["time"] > time_of_max_speed)]
+    trimmed_df["time"] = trimmed_df["time"] - time_of_max_speed
+
+    return trimmed_df
 
     # return pd.DataFrame({
 
@@ -53,7 +57,6 @@ def iterate_files():
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
     csv_files = [f for f in os.listdir(INPUT_PATH) if f.lower().endswith(".csv")]
-    print(csv_files)
     index = 0
     total = len(csv_files)
 
@@ -74,25 +77,43 @@ def iterate_files():
         index += 1
         print(str(index) + "/" + str(total) + ": " + filename + " converted to " + out_name)
 
+def analyze():
+    drivetrain_resistance_averages = []
+    
+    csv_files = [f for f in os.listdir(OUTPUT_PATH) if f.lower().endswith(".csv")]
+    for filename in csv_files:
+        input = os.path.join(OUTPUT_PATH, filename)
+        df = pd.read_csv(input, comment="#")
+        drivetrain_resistance_averages.append(df["F_r"].mean())
+    
+    average_drivetrain_resistance = np.mean(drivetrain_resistance_averages)
+
+    print("AVERAGE DRIVETRAIN RESISTANCE: " + str(average_drivetrain_resistance) + " (N)")
+
 def graph_data(filename):
     # read file while skipping comments
     df = pd.read_csv(filename, comment="#")
 
     plt.figure()
     plt.plot(df["time"], df["F_r"])
-    plt.xlabel("time")
-    plt.ylabel("resistance (N)")
-    plt.title("time" + ' vs. ' + "drivetrain resistance")
+    plt.xlabel("Time since pedal released (s)")
+    plt.ylabel("Drivetrain resistance (N)")
+    plt.title("Time since pedal released (s)" + ' vs. ' + "Drivetrain resistance (N)")
     plt.tight_layout()
     plt.show()
 
     plt.figure()
     plt.plot(df["time"], df["velocity"])
-    plt.xlabel("time")
-    plt.ylabel("velocity m/s")
-    plt.title("time" + ' vs. ' + "velocity")
+    plt.xlabel("Time since pedal released (s)")
+    plt.ylabel("Velocity (m/s)")
+    plt.title("Time" + ' vs. ' + "Velocity")
     plt.tight_layout()
     plt.show()
 
-#iterate_files()
-graph_data(os.path.join(OUTPUT_PATH, "RR-Coastdown-2WD-1_converted.csv"))
+iterate_files()
+analyze()
+graph_data(os.path.join(OUTPUT_PATH, "RR-Coastdown-3_converted.csv"))
+
+#good graphs:
+# RR-Coastdown-2WD-1_converted.csv
+# 
